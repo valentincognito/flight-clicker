@@ -32,8 +32,9 @@ interface GameState {
   owned: OwnedState;
   /**
    * Seconds elapsed in each building's current production cycle. Reaches the
-   * building's `cycleTime`, pays out, and resets — this is what fills the
-   * per-building progress bars in the shop.
+   * building's `cycleTime`, pays out, and resets. This drives payout *timing*;
+   * the shop's progress bars are a decoupled UI-thread animation of the same
+   * cadence, so they never read this directly.
    */
   progress: ProgressState;
   /** Set once the finale building (Grand Beacon) is purchased. */
@@ -96,9 +97,15 @@ export const useGameStore = create<GameState>()((set, get) => ({
 
   tick: () =>
     set((state) => {
-      const resources = { ...state.resources };
-      const progress = { ...state.progress };
       const multiplier = globalMultiplier(state.owned);
+      // Keep the previous references and only clone the slices that actually
+      // change: `resources` only when a payout lands (so `resources` selectors
+      // don't re-render every tick), `progress` only when a producer advances.
+      let resources = state.resources;
+      let progress = state.progress;
+      let resourcesChanged = false;
+      let progressChanged = false;
+
       for (const building of BUILDINGS) {
         if (building.producesResource === null) continue;
         const count = state.owned[building.id] ?? 0;
@@ -108,17 +115,34 @@ export const useGameStore = create<GameState>()((set, get) => ({
         if (count <= 0) continue;
 
         const cycle = building.cycleTime ?? DEFAULT_CYCLE;
-        let elapsed = (progress[building.id] ?? 0) + TICK_SECONDS;
+        let elapsed = (state.progress[building.id] ?? 0) + TICK_SECONDS;
         // Pay out `rate * cycleTime` per completed cycle. The loop handles the
         // rare case of a long frame spanning more than one cycle; the average
         // rate stays `count * productionRate * multiplier` per second.
+        let payout = 0;
         while (elapsed >= cycle) {
           elapsed -= cycle;
-          resources[building.producesResource] +=
-            count * building.productionRate * cycle * multiplier;
+          payout += count * building.productionRate * cycle * multiplier;
+        }
+
+        if (payout > 0) {
+          if (!resourcesChanged) {
+            resources = { ...resources };
+            resourcesChanged = true;
+          }
+          resources[building.producesResource] += payout;
+        }
+
+        if (!progressChanged) {
+          progress = { ...progress };
+          progressChanged = true;
         }
         progress[building.id] = elapsed;
       }
+
+      if (!resourcesChanged && !progressChanged) return {};
+      if (!resourcesChanged) return { progress };
+      if (!progressChanged) return { resources };
       return { resources, progress };
     }),
 

@@ -1,14 +1,15 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
+  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withTiming,
 } from 'react-native-reanimated';
 
 import { BuildingIcon, ResourceIcon } from '@/components/game/hud/gameIcons';
-import { TICK_MS } from '@/game/gameStore';
 import type { Building, BuildingCost, CurrencyId } from '@/types/game';
 import { formatAmount, formatRate } from '@/utils/format';
 
@@ -20,8 +21,6 @@ interface Props {
   canAfford: boolean;
   /** Current global production multiplier, so yields shown are effective/live. */
   multiplier: number;
-  /** Fill fraction (0..1) of this building's current production cycle. */
-  cycleFraction: number;
   onBuy: () => void;
 }
 
@@ -33,25 +32,27 @@ const BAR_COLOR: Record<CurrencyId, string> = {
 };
 
 /**
- * The production-cycle bar. Fills smoothly toward `fraction` over one tick, and
- * snaps back instantly when the cycle wraps (fraction drops) so a completed
- * payout reads as a clean reset rather than the bar animating backwards.
+ * The production-cycle bar. Runs entirely on the UI thread as a looping
+ * animation (0 → 100% over `durationMs`, then instantly back to 0), so it stays
+ * buttery at 60fps regardless of JS-thread load and always reaches full. It is
+ * decoupled from the store's discrete tick — it visualizes the cadence rather
+ * than mirroring exact payout progress — which is what makes it feel smooth.
  */
-function ProductionBar({ fraction, color }: { fraction: number; color: string }) {
-  const fill = useSharedValue(fraction);
-  const prev = useRef(fraction);
+function ProductionBar({ durationMs, color }: { durationMs: number; color: string }) {
+  const fill = useSharedValue(0);
 
   useEffect(() => {
-    if (fraction < prev.current) {
-      fill.value = fraction;
-    } else {
-      fill.value = withTiming(fraction, { duration: TICK_MS, easing: Easing.linear });
-    }
-    prev.current = fraction;
-  }, [fraction, fill]);
+    fill.value = 0;
+    fill.value = withRepeat(
+      withTiming(1, { duration: durationMs, easing: Easing.linear }),
+      -1, // repeat forever
+      false, // restart from 0 each cycle (sawtooth), don't reverse
+    );
+    return () => cancelAnimation(fill);
+  }, [durationMs, fill]);
 
   const fillStyle = useAnimatedStyle(() => ({
-    transform: [{ scaleX: Math.min(1, Math.max(0, fill.value)) }],
+    transform: [{ scaleX: fill.value }],
   }));
 
   return (
@@ -70,8 +71,7 @@ function BuildingYield({
   building,
   owned,
   multiplier,
-  cycleFraction,
-}: Pick<Props, 'building' | 'owned' | 'multiplier' | 'cycleFraction'>) {
+}: Pick<Props, 'building' | 'owned' | 'multiplier'>) {
   if (building.isMultiplier) {
     const perUnit = Math.round((building.multiplierBonus ?? 0) * 100);
     return (
@@ -95,13 +95,14 @@ function BuildingYield({
       );
     }
     const total = building.productionRate * owned * multiplier;
+    const durationMs = (building.cycleTime ?? 1) * 1000;
     return (
       <View style={styles.yieldWrap}>
         <View style={styles.yieldRow}>
           <ResourceIcon currency={building.producesResource} size={12} />
           <Text style={styles.yield}>{formatRate(total)}/s</Text>
         </View>
-        <ProductionBar fraction={cycleFraction} color={BAR_COLOR[building.producesResource]} />
+        <ProductionBar durationMs={durationMs} color={BAR_COLOR[building.producesResource]} />
       </View>
     );
   }
@@ -116,7 +117,6 @@ export function BuildingCard({
   costs,
   canAfford,
   multiplier,
-  cycleFraction,
   onBuy,
 }: Props) {
   return (
@@ -135,12 +135,7 @@ export function BuildingCard({
       <Text style={styles.name} numberOfLines={1}>
         {building.name}
       </Text>
-      <BuildingYield
-        building={building}
-        owned={owned}
-        multiplier={multiplier}
-        cycleFraction={cycleFraction}
-      />
+      <BuildingYield building={building} owned={owned} multiplier={multiplier} />
       <View style={styles.costList}>
         {costs.map((cost) => (
           <View key={cost.resource} style={styles.costRow}>

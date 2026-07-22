@@ -9,7 +9,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-const PARTICLE_COUNT = 7;
+const PARTICLE_COUNT = 5;
 const BURST_RADIUS = 30;
 const DURATION = 620;
 const PARTICLE_COLORS = ['#FFE9A8', '#FFF6D6', '#BFE9FF', '#FFD27A'];
@@ -76,17 +76,17 @@ function Particle({
   color: string;
   progress: SharedValue<number>;
 }) {
+  // Precompute the (constant) travel vector on the JS side so the per-frame
+  // worklet only does cheap multiplies, not trig.
+  const dx = Math.cos(angle) * BURST_RADIUS;
+  const dy = Math.sin(angle) * BURST_RADIUS;
   const style = useAnimatedStyle(() => {
     const p = progress.value;
     // Quick fade-in over the first slice of the burst, then fade out.
     const opacity = (1 - p) * (p < 0.15 ? p / 0.15 : 1);
     return {
       opacity,
-      transform: [
-        { translateX: Math.cos(angle) * BURST_RADIUS * p },
-        { translateY: Math.sin(angle) * BURST_RADIUS * p },
-        { scale: 1 - p * 0.6 },
-      ],
+      transform: [{ translateX: dx * p }, { translateY: dy * p }, { scale: 1 - p * 0.6 }],
     };
   });
   return <Animated.View style={[styles.particle, { backgroundColor: color }, style]} />;

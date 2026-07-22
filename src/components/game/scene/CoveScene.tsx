@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -24,7 +24,10 @@ import {
   TradingShipSprite,
   WaterSprite,
 } from '@/components/game/scene/sceneAssets';
-import { TapSparkle } from '@/components/game/scene/TapSparkle';
+import {
+  TapSparkleLayer,
+  type TapSparkleLayerHandle,
+} from '@/components/game/scene/TapSparkleLayer';
 import { useGameStore } from '@/game/gameStore';
 
 type Slot = { left: DimensionValue; top: DimensionValue; width: DimensionValue };
@@ -44,15 +47,6 @@ const TRADING_SHIP_SLOTS: Slot[] = [
 const BOAT_ASPECT = 100 / 70;
 const SHIP_ASPECT = 120 / 92;
 
-// Cap concurrent bursts so rapid tapping can't grow the list without bound.
-const MAX_SPARKLES = 12;
-
-interface Sparkle {
-  id: number;
-  x: number;
-  y: number;
-}
-
 /**
  * Bottom scene layer: sky, water, lighthouse and dock, plus boats / ships /
  * harbor lights / a second dock that appear as their buildings are owned. The
@@ -69,26 +63,17 @@ export function CoveScene() {
   const fishingBoatSlots = FISHING_BOAT_SLOTS.slice(0, Math.min(fishingBoatCount, FISHING_BOAT_SLOTS.length));
   const tradingShipSlots = TRADING_SHIP_SLOTS.slice(0, Math.min(tradingShipCount, TRADING_SHIP_SLOTS.length));
 
-  const [sparkles, setSparkles] = useState<Sparkle[]>([]);
-  const nextSparkleId = useRef(0);
+  const sparkleLayer = useRef<TapSparkleLayerHandle>(null);
 
   const handleWaterTap = useCallback(
     (event: GestureResponderEvent) => {
       const { locationX, locationY } = event.nativeEvent;
       tapBoost();
-      const id = nextSparkleId.current;
-      nextSparkleId.current += 1;
-      setSparkles((prev) => {
-        const next = [...prev, { id, x: locationX, y: locationY }];
-        return next.length > MAX_SPARKLES ? next.slice(next.length - MAX_SPARKLES) : next;
-      });
+      // Imperative spawn: only the sparkle layer re-renders, not this scene.
+      sparkleLayer.current?.spawn(locationX, locationY);
     },
     [tapBoost],
   );
-
-  const removeSparkle = useCallback((id: number) => {
-    setSparkles((prev) => prev.filter((sparkle) => sparkle.id !== id));
-  }, []);
 
   // Gentle pulse for the lighthouse beam once it is switched on.
   const beamPulse = useSharedValue(0.65);
@@ -130,9 +115,7 @@ export function CoveScene() {
           </View>
         ))}
 
-        {sparkles.map((sparkle) => (
-          <TapSparkle key={sparkle.id} id={sparkle.id} x={sparkle.x} y={sparkle.y} onDone={removeSparkle} />
-        ))}
+        <TapSparkleLayer ref={sparkleLayer} />
       </Pressable>
 
       {tradingShipCount >= 1 && <HarborLightsSprite style={styles.harborLights} />}
