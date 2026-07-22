@@ -11,12 +11,19 @@ const RESOURCE_ORDER: CurrencyId[] = ['driftwood', 'seaGlass', 'starlight'];
 /** Top HUD bar: live resource readouts overlaid on the scene. */
 export function TopBar() {
   const resources = useGameStore((s) => s.resources);
+  const owned = useGameStore((s) => s.owned);
+  const isResourceUnlocked = useGameStore((s) => s.isResourceUnlocked);
   const insets = useSafeAreaInsets();
+
+  // `owned` is read above purely so this re-evaluates as buildings are bought
+  // and a previously-locked resource becomes visible.
+  void owned;
+  const visible = RESOURCE_ORDER.filter((currency) => isResourceUnlocked(currency));
 
   return (
     <View pointerEvents="box-none" style={[styles.container, { paddingTop: insets.top + 8 }]}>
       <View style={styles.row}>
-        {RESOURCE_ORDER.map((currency) => (
+        {visible.map((currency) => (
           <ResourceCounter key={currency} currency={currency} amount={resources[currency]} />
         ))}
       </View>

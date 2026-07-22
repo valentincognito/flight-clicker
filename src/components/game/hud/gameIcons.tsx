@@ -16,9 +16,16 @@ const RESOURCE_GLYPH: Record<CurrencyId, string> = {
 };
 
 const BUILDING_GLYPH: Record<string, string> = {
-  fishingBoat: '🚤', //    -> icons/fishing-boat.png
-  tradingShip: '⛵', //     -> icons/trading-ship.png
-  lighthouseBeam: '🗼', //  -> icons/lighthouse-beam.png
+  tidePoolCollector: '🪣', // -> icons/tide-pool-collector.png
+  driftnet: '🕸️', //          -> icons/driftnet.png
+  fishingBoat: '🚤', //       -> icons/fishing-boat.png
+  tradingShip: '⛵', //        -> icons/trading-ship.png
+  harborMarketStall: '🏪', // -> icons/harbor-market-stall.png
+  lighthouseBeam: '🗼', //     -> icons/lighthouse-beam.png
+  signalFire: '🔥', //         -> icons/signal-fire.png
+  harborTownHouses: '🏘️', //  -> icons/harbor-town-houses.png
+  secondDock: '⚓', //         -> icons/second-dock.png
+  grandBeacon: '🌟', //        -> icons/grand-beacon.png
 };
 
 export function ResourceIcon({ currency, size = 18 }: { currency: CurrencyId; size?: number }) {

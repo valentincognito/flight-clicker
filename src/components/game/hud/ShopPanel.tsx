@@ -9,8 +9,14 @@ import { useGameStore } from '@/game/gameStore';
 export function ShopPanel() {
   const owned = useGameStore((s) => s.owned);
   const resources = useGameStore((s) => s.resources);
+  const progress = useGameStore((s) => s.progress);
   const buyBuilding = useGameStore((s) => s.buyBuilding);
+  const productionMultiplier = useGameStore((s) => s.productionMultiplier);
   const insets = useSafeAreaInsets();
+
+  // Recomputed on every render (the store notifies on each tick / purchase), so
+  // the per-building yields the cards show stay in sync with owned multipliers.
+  const multiplier = productionMultiplier();
 
   return (
     <View
@@ -24,15 +30,20 @@ export function ShopPanel() {
           contentContainerStyle={styles.cards}>
           {BUILDINGS.map((building) => {
             const count = owned[building.id] ?? 0;
-            const cost = buildingCost(building, count);
-            const canAfford = resources[building.costCurrency] >= cost;
+            const costs = buildingCost(building, count);
+            const canAfford = costs.every((cost) => resources[cost.resource] >= cost.amount);
+            const cycleFraction = building.cycleTime
+              ? Math.min(1, (progress[building.id] ?? 0) / building.cycleTime)
+              : 0;
             return (
               <BuildingCard
                 key={building.id}
                 building={building}
                 owned={count}
-                cost={cost}
+                costs={costs}
                 canAfford={canAfford}
+                multiplier={multiplier}
+                cycleFraction={cycleFraction}
                 onBuy={() => buyBuilding(building.id)}
               />
             );

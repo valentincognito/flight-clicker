@@ -5,7 +5,7 @@ import { MilestoneOverlay } from '@/components/game/MilestoneOverlay';
 import { ShopPanel } from '@/components/game/hud/ShopPanel';
 import { TopBar } from '@/components/game/hud/TopBar';
 import { CoveScene } from '@/components/game/scene/CoveScene';
-import { useGameStore } from '@/game/gameStore';
+import { TICK_MS, useGameStore } from '@/game/gameStore';
 import { useMilestoneWatcher } from '@/hooks/use-milestone-watcher';
 
 /**
@@ -20,11 +20,12 @@ import { useMilestoneWatcher } from '@/hooks/use-milestone-watcher';
 export default function GameScreen() {
   const { milestone, dismiss } = useMilestoneWatcher();
 
-  // Game loop: tick once per second while this screen is mounted, cleaned up on unmount.
+  // Game loop: tick every TICK_MS while this screen is mounted (fine-grained so
+  // the shop's production-cycle bars animate smoothly), cleaned up on unmount.
   useEffect(() => {
     const interval = setInterval(() => {
       useGameStore.getState().tick();
-    }, 1000);
+    }, TICK_MS);
     return () => clearInterval(interval);
   }, []);
 
