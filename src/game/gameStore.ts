@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 import { BUILDINGS, buildingCost } from "@/game/buildings";
-import type { CurrencyId, ResourceState } from "@/types/game";
+import type { CurrencyId, OfflineReport, ResourceState } from "@/types/game";
 
 /** The resource the player gathers by tapping, and that seeds the economy. */
 export const PRIMARY_CURRENCY: CurrencyId = "driftwood";
@@ -39,8 +39,28 @@ interface GameState {
   progress: ProgressState;
   /** Set once the finale building (Grand Beacon) is purchased. */
   flightComplete: boolean;
+  /**
+   * False until a saved game has been loaded (or confirmed absent). The tick
+   * loop and autosave wait for this so we never overwrite a real save with the
+   * initial default state on startup.
+   */
+  hydrated: boolean;
+  /** What accrued while the app was closed, for a "welcome back" message. */
+  offlineReport: OfflineReport | null;
   /** Advance the economy by one tick (`TICK_MS` of production). */
   tick: () => void;
+  /** Replace state from a loaded save (with offline gains already applied). */
+  hydrate: (loaded: {
+    resources: ResourceState;
+    owned: OwnedState;
+    progress: ProgressState;
+    flightComplete: boolean;
+    offlineReport: OfflineReport | null;
+  }) => void;
+  /** Mark startup complete when there was no save to load (fresh game). */
+  markHydrated: () => void;
+  /** Clear the offline report once the UI has shown it. */
+  dismissOfflineReport: () => void;
   /** Buy one unit of `id` if affordable, deducting its cost. Returns success. */
   buyBuilding: (id: string) => boolean;
   /** Manual tap: bump the primary resource by `TAP_AMOUNT`. */
@@ -77,9 +97,10 @@ function initialProgress(): ProgressState {
 
 /**
  * Global production multiplier from all owned multiplier buildings: `1` plus the
- * sum of each multiplier building's `multiplierBonus * ownedCount`.
+ * sum of each multiplier building's `multiplierBonus * ownedCount`. Exported so
+ * the offline-accumulation math can reuse it against a loaded save's `owned`.
  */
-function globalMultiplier(owned: OwnedState): number {
+export function globalMultiplier(owned: OwnedState): number {
   let bonus = 0;
   for (const building of BUILDINGS) {
     if (building.isMultiplier) {
@@ -94,6 +115,8 @@ export const useGameStore = create<GameState>()((set, get) => ({
   owned: initialOwned(),
   progress: initialProgress(),
   flightComplete: false,
+  hydrated: false,
+  offlineReport: null,
 
   tick: () =>
     set((state) => {
@@ -178,6 +201,22 @@ export const useGameStore = create<GameState>()((set, get) => ({
         [PRIMARY_CURRENCY]: state.resources[PRIMARY_CURRENCY] + TAP_AMOUNT,
       },
     })),
+
+  hydrate: (loaded) =>
+    // Merge onto fresh defaults so a save written before a building/resource
+    // existed still loads cleanly (missing keys fall back to their initial 0).
+    set({
+      resources: { ...initialResources(), ...loaded.resources },
+      owned: { ...initialOwned(), ...loaded.owned },
+      progress: { ...initialProgress(), ...loaded.progress },
+      flightComplete: loaded.flightComplete,
+      offlineReport: loaded.offlineReport,
+      hydrated: true,
+    }),
+
+  markHydrated: () => set({ hydrated: true }),
+
+  dismissOfflineReport: () => set({ offlineReport: null }),
 
   isResourceUnlocked: (resource) => {
     if (resource === PRIMARY_CURRENCY) return true;

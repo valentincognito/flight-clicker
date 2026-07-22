@@ -78,3 +78,15 @@ export interface Building {
 
 /** Current amount held of every currency. */
 export type ResourceState = Record<CurrencyId, number>;
+
+/**
+ * Summary of what accrued while the app was closed, produced when a save is
+ * loaded. `null` when nothing was earned (fresh start or no time elapsed); the
+ * UI can surface it as a "welcome back" message.
+ */
+export interface OfflineReport {
+  /** Seconds credited toward accumulation (already capped). */
+  seconds: number;
+  /** Amount gained per resource while away. */
+  gained: ResourceState;
+}

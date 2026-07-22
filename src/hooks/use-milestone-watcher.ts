@@ -15,6 +15,9 @@ export function useMilestoneWatcher() {
   useEffect(() => {
     // Fires on every store change; we only act when an `owned` count increases.
     const unsubscribe = useGameStore.subscribe((state, prevState) => {
+      // Ignore the load/hydrate jump (0 → saved counts) and anything before it,
+      // so restoring a save doesn't replay every past milestone at once.
+      if (!prevState.hydrated) return;
       for (const building of BUILDINGS) {
         const before = prevState.owned[building.id] ?? 0;
         const after = state.owned[building.id] ?? 0;
