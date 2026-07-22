@@ -1,6 +1,11 @@
 import { create } from "zustand";
 
 import { BUILDINGS, buildingCost } from "@/game/buildings";
+import {
+  computeBuildingSpeed,
+  UPGRADES,
+  type UpgradeState,
+} from "@/game/upgrades";
 import type { CurrencyId, OfflineReport, ResourceState } from "@/types/game";
 
 /** The resource the player gathers by tapping, and that seeds the economy. */
@@ -37,6 +42,8 @@ interface GameState {
    * cadence, so they never read this directly.
    */
   progress: ProgressState;
+  /** Which speed upgrades have been purchased, keyed by upgrade id. */
+  upgrades: UpgradeState;
   /** Set once the finale building (Grand Beacon) is purchased. */
   flightComplete: boolean;
   /**
@@ -54,6 +61,7 @@ interface GameState {
     resources: ResourceState;
     owned: OwnedState;
     progress: ProgressState;
+    upgrades: UpgradeState;
     flightComplete: boolean;
     offlineReport: OfflineReport | null;
   }) => void;
@@ -63,6 +71,10 @@ interface GameState {
   dismissOfflineReport: () => void;
   /** Buy one unit of `id` if affordable, deducting its cost. Returns success. */
   buyBuilding: (id: string) => boolean;
+  /** Buy the one-time upgrade `id` if affordable and not already owned. */
+  buyUpgrade: (id: string) => boolean;
+  /** Current speed factor for building `id` from its owned upgrades (>= 1). */
+  buildingSpeed: (id: string) => number;
   /** Manual tap: bump the primary resource by `TAP_AMOUNT`. */
   tapBoost: () => void;
   /**
@@ -95,6 +107,10 @@ function initialProgress(): ProgressState {
   return Object.fromEntries(BUILDINGS.map((building) => [building.id, 0]));
 }
 
+function initialUpgrades(): UpgradeState {
+  return {};
+}
+
 /**
  * Global production multiplier from all owned multiplier buildings: `1` plus the
  * sum of each multiplier building's `multiplierBonus * ownedCount`. Exported so
@@ -114,6 +130,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   resources: initialResources(),
   owned: initialOwned(),
   progress: initialProgress(),
+  upgrades: initialUpgrades(),
   flightComplete: false,
   hydrated: false,
   offlineReport: null,
@@ -137,15 +154,19 @@ export const useGameStore = create<GameState>()((set, get) => ({
         // locked resources naturally stay at zero (and idle bars don't fill).
         if (count <= 0) continue;
 
-        const cycle = building.cycleTime ?? DEFAULT_CYCLE;
+        // Speed upgrades shorten the effective cycle (bar fills faster) while
+        // the per-cycle payout stays at the base amount — so cycles land `speed`×
+        // more often and throughput scales with speed.
+        const speed = computeBuildingSpeed(building.id, state.upgrades);
+        const cycle = (building.cycleTime ?? DEFAULT_CYCLE) / speed;
         let elapsed = (state.progress[building.id] ?? 0) + TICK_SECONDS;
-        // Pay out `rate * cycleTime` per completed cycle. The loop handles the
-        // rare case of a long frame spanning more than one cycle; the average
-        // rate stays `count * productionRate * multiplier` per second.
+        // Pay out per completed cycle. The loop handles the rare case of a long
+        // frame spanning more than one cycle; the average rate works out to
+        // `count * productionRate * speed * multiplier` per second.
         let payout = 0;
         while (elapsed >= cycle) {
           elapsed -= cycle;
-          payout += count * building.productionRate * cycle * multiplier;
+          payout += count * building.productionRate * speed * cycle * multiplier;
         }
 
         if (payout > 0) {
@@ -194,6 +215,28 @@ export const useGameStore = create<GameState>()((set, get) => ({
     return true;
   },
 
+  buyUpgrade: (id) => {
+    const { resources, upgrades } = get();
+    const upgrade = UPGRADES.find((u) => u.id === id);
+    if (!upgrade || upgrades[id]) return false; // unknown or already owned
+
+    if (upgrade.costs.some((cost) => resources[cost.resource] < cost.amount))
+      return false;
+
+    const nextResources = { ...resources };
+    for (const cost of upgrade.costs) {
+      nextResources[cost.resource] -= cost.amount;
+    }
+
+    set({
+      resources: nextResources,
+      upgrades: { ...upgrades, [id]: true },
+    });
+    return true;
+  },
+
+  buildingSpeed: (id) => computeBuildingSpeed(id, get().upgrades),
+
   tapBoost: () =>
     set((state) => ({
       resources: {
@@ -209,6 +252,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
       resources: { ...initialResources(), ...loaded.resources },
       owned: { ...initialOwned(), ...loaded.owned },
       progress: { ...initialProgress(), ...loaded.progress },
+      upgrades: { ...initialUpgrades(), ...loaded.upgrades },
       flightComplete: loaded.flightComplete,
       offlineReport: loaded.offlineReport,
       hydrated: true,

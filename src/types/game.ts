@@ -76,6 +76,27 @@ export interface Building {
   isFinale?: boolean;
 }
 
+/**
+ * A one-time purchasable upgrade that boosts a building's production speed.
+ *
+ * A `speedMultiplier` of 2 makes the target building's cycle fill twice as fast
+ * *and* doubles its throughput — while its payout-per-cycle stays the same
+ * (effectiveRate × effectiveCycle is invariant), so the shop label doesn't drop
+ * when you buy one; only the bar speeds up and resources climb faster.
+ */
+export interface Upgrade {
+  /** Stable unique id, e.g. `'tidePoolSpeed2'`. */
+  id: string;
+  /** Human-readable name shown in the shop. */
+  name: string;
+  /** Id of the building whose speed this multiplies. */
+  targetBuildingId: string;
+  /** Factor applied to the target building's speed (2 = twice as fast). */
+  speedMultiplier: number;
+  /** One-time cost (may span several resources). */
+  costs: BuildingCost[];
+}
+
 /** Current amount held of every currency. */
 export type ResourceState = Record<CurrencyId, number>;
 

@@ -21,6 +21,8 @@ interface Props {
   canAfford: boolean;
   /** Current global production multiplier, so yields shown are effective/live. */
   multiplier: number;
+  /** Speed factor from owned upgrades (>= 1); speeds up the bar. */
+  speedMultiplier: number;
   onBuy: () => void;
 }
 
@@ -71,7 +73,8 @@ function BuildingYield({
   building,
   owned,
   multiplier,
-}: Pick<Props, 'building' | 'owned' | 'multiplier'>) {
+  speedMultiplier,
+}: Pick<Props, 'building' | 'owned' | 'multiplier' | 'speedMultiplier'>) {
   if (building.isMultiplier) {
     const perUnit = Math.round((building.multiplierBonus ?? 0) * 100);
     return (
@@ -85,22 +88,29 @@ function BuildingYield({
   }
 
   if (building.producesResource) {
+    // Payout per cycle = what lands each time the bar fills. Pairs with the bar
+    // (one fill = one payout), so the card tells a single coherent story.
+    const cycle = building.cycleTime ?? 1;
     if (owned <= 0) {
-      // Not built yet: a muted hint of what a single unit would make.
+      // Not built yet: a muted hint of one unit's payout per cycle.
+      const perCyclePreview = building.productionRate * cycle * multiplier;
       return (
         <View style={styles.yieldRow}>
           <ResourceIcon currency={building.producesResource} size={12} />
-          <Text style={styles.yieldPreview}>+{formatRate(building.productionRate * multiplier)}/s</Text>
+          <Text style={styles.yieldPreview}>+{formatRate(perCyclePreview)} / cycle</Text>
         </View>
       );
     }
-    const total = building.productionRate * owned * multiplier;
-    const durationMs = (building.cycleTime ?? 1) * 1000;
+    // Payout per cycle is invariant to speed (that's the point) so it uses the
+    // base cycle; the bar's duration uses the effective cycle so upgrades make
+    // it visibly fill faster.
+    const perCycle = building.productionRate * owned * cycle * multiplier;
+    const durationMs = (cycle / speedMultiplier) * 1000;
     return (
       <View style={styles.yieldWrap}>
         <View style={styles.yieldRow}>
           <ResourceIcon currency={building.producesResource} size={12} />
-          <Text style={styles.yield}>{formatRate(total)}/s</Text>
+          <Text style={styles.yield}>+{formatRate(perCycle)} / cycle</Text>
         </View>
         <ProductionBar durationMs={durationMs} color={BAR_COLOR[building.producesResource]} />
       </View>
@@ -117,6 +127,7 @@ export function BuildingCard({
   costs,
   canAfford,
   multiplier,
+  speedMultiplier,
   onBuy,
 }: Props) {
   return (
@@ -135,7 +146,12 @@ export function BuildingCard({
       <Text style={styles.name} numberOfLines={1}>
         {building.name}
       </Text>
-      <BuildingYield building={building} owned={owned} multiplier={multiplier} />
+      <BuildingYield
+        building={building}
+        owned={owned}
+        multiplier={multiplier}
+        speedMultiplier={speedMultiplier}
+      />
       <View style={styles.costList}>
         {costs.map((cost) => (
           <View key={cost.resource} style={styles.costRow}>

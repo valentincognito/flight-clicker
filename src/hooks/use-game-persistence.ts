@@ -24,8 +24,8 @@ export function useGamePersistence() {
   // Stable best-effort snapshot writer; no-ops until hydration completes.
   const save = useCallback(() => {
     if (!readyRef.current) return;
-    const { resources, owned, progress, flightComplete } = useGameStore.getState();
-    void writeSave({ resources, owned, progress, flightComplete }, Date.now());
+    const { resources, owned, progress, upgrades, flightComplete } = useGameStore.getState();
+    void writeSave({ resources, owned, progress, upgrades, flightComplete }, Date.now());
   }, []);
 
   // Load once, then open the gate.
@@ -41,6 +41,7 @@ export function useGamePersistence() {
           resources,
           owned: saved.owned,
           progress,
+          upgrades: saved.upgrades ?? {},
           flightComplete: saved.flightComplete,
           offlineReport: report.seconds > 0 ? report : null,
         });

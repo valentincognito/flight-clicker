@@ -1,5 +1,6 @@
 import { BUILDINGS } from '@/game/buildings';
 import { globalMultiplier } from '@/game/gameStore';
+import { computeBuildingSpeed } from '@/game/upgrades';
 import type { OfflineReport, ResourceState } from '@/types/game';
 import { loadJSON, saveJSON } from '@/utils/storage';
 
@@ -20,6 +21,8 @@ export interface SaveData {
   resources: ResourceState;
   owned: Record<string, number>;
   progress: Record<string, number>;
+  /** Purchased upgrades. Optional so pre-upgrades v1 saves still load. */
+  upgrades?: Record<string, boolean>;
   flightComplete: boolean;
   /** Wall-clock ms when written; the basis for offline accumulation on load. */
   savedAt: number;
@@ -63,19 +66,22 @@ export function applyOffline(
   const progress: Record<string, number> = { ...save.progress };
   const gained: ResourceState = { driftwood: 0, seaGlass: 0, starlight: 0 };
   const multiplier = globalMultiplier(save.owned);
+  const upgrades = save.upgrades ?? {};
 
   for (const building of BUILDINGS) {
     if (building.producesResource === null) continue;
     const count = save.owned[building.id] ?? 0;
     if (count <= 0) continue;
 
-    const gain = elapsed * count * building.productionRate * multiplier;
+    // Throughput includes any speed upgrades (throughput scales with speed).
+    const speed = computeBuildingSpeed(building.id, upgrades);
+    const gain = elapsed * count * building.productionRate * speed * multiplier;
     resources[building.producesResource] += gain;
     gained[building.producesResource] += gain;
 
     // Keep cycle progress coherent (bars are decoupled, but the econ counter is
-    // not) by advancing it within its cycle.
-    const cycle = building.cycleTime ?? 1;
+    // not) by advancing it within its effective cycle.
+    const cycle = (building.cycleTime ?? 1) / speed;
     progress[building.id] = ((progress[building.id] ?? 0) + elapsed) % cycle;
   }
 
